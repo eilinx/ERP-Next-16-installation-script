@@ -1,6 +1,15 @@
 #!/bin/bash
 
 
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+MAGENTA='\033[0;35m'
+NC='\033[0m'
+
+
 cat << EOF
 This script was created to easily deploy Frappe-bench and\or ERP-Next 16 on a clean Debian 13+ or Ubuntu 24.04+ server
 You are required to have a frappe-dedicated user and the ability to SSH to your server with this user. In addition, the frappe-dedicated user, should have sudo permissions on the server. If you have the above we will guide you through the setup process.
@@ -21,6 +30,39 @@ https://discuss.frappe.io/t/guide-how-to-install-erpnext-v15-on-linux-ubuntu-ste
 Good luck :-)
 
 EOF
+prompt_for_mariadb_password() {
+    while true; do
+        echo -ne "${YELLOW}Enter the desired password for MariaDB root user:${NC} "
+        read -s mariadb_password
+        echo
+        echo -ne "${YELLOW}Confirm the MariaDB root password:${NC} "
+        read -s mariadb_password_confirm
+        echo
+        if [ "$mariadb_password" = "$mariadb_password_confirm" ]; then
+            break
+        else
+            echo -e "${RED}Passwords do not match. Please try again.${NC}"
+        fi
+    done
+}
+
+
+prompt_for_admin_password() {
+    while true; do
+        echo -ne "${YELLOW}Enter the desired Frappe administrator password:${NC} "
+        read -s admin_password
+        echo
+        echo -ne "${YELLOW}Confirm the Frappe administrator password:${NC} "
+        read -s admin_password_confirm
+        echo
+        if [ "$admin_password" = "$admin_password_confirm" ]; then
+            break
+        else
+            echo -e "${RED}Passwords do not match. Please try again.${NC}"
+        fi
+    done
+}
+
 echo -e "Let's begin with your timezone.\nTake a look at your current date and time: $(date)\nIs it correct? [Y/n]"
 read ans
 if [ "$ans" = "n" ]; then
@@ -29,10 +71,12 @@ if [ "$ans" = "n" ]; then
  timedatectl set-timezone "$timez"
 fi 
 ans=""
-read -rsp "Please enter sudo password:" passwrd
-echo -e "\n"
-read -rsp "Please enter mysql root password:" sql_passwrd
-echo -e "\n\n"
+prompt_for_mariadb_password
+prompt_for_admin_password
+read -p "Please enter new site name: " newSite
+sudo apt update && sudo apt upgrade -y
+sudo apt install git libmariadb-dev-compat redis-server libmariadb-dev mariadb-server mariadb-client pkg-config xvfb libfontconfig cron curl build-essential gcc certbot python3-certbot-nginx ansible -y
+
 read -p "Let's Update the system first. Please hit Enter to start..."
 echo $passwrd | sudo -S apt-get update -y
 echo $passwrd | sudo -S NEEDRESTART_MODE=a apt-get upgrade -y
@@ -43,15 +87,14 @@ echo $passwrd | sudo -S NEEDRESTART_MODE=a apt -qq install python3.10-venv -y
 echo $passwrd | sudo -S NEEDRESTART_MODE=a apt -qq install cron software-properties-common mariadb-client mariadb-server -y
 echo $passwrd | sudo -S NEEDRESTART_MODE=a apt -qq install supervisor redis-server xvfb libfontconfig wkhtmltopdf -y
 MARKER_FILE=~/.MariaDB_handled.marker
-
 if [ ! -f "$MARKER_FILE" ]; then
- read -p "Let's configure your Mariadb server. Please hit Enter to start..."
- echo $passwrd | sudo -S mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '$sql_passwrd';"
- echo $passwrd | sudo -S mysql -u root -p"$sql_passwrd" -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '$sql_passwrd';"
- echo $passwrd | sudo -S mysql -u root -p"$sql_passwrd" -e "DELETE FROM mysql.user WHERE User='';"
- echo $passwrd | sudo -S mysql -u root -p"$sql_passwrd" -e "DROP DATABASE IF EXISTS test;DELETE FROM mysql.db WHERE Db='test' OR Db='test\\_%';"
- echo $passwrd | sudo -S mysql -u root -p"$sql_passwrd" -e "FLUSH PRIVILEGES;"
- echo $passwrd | sudo -S bash -c 'cat << EOF >> /etc/mysql/my.cnf
+export mariadb_password;
+sudo mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '$mariadb_password';";
+sudo mysql -u root -p"$mariadb_password" -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '$mariadb_password';";
+sudo mysql -u root -p"$mariadb_password" -e "DELETE FROM mysql.user WHERE User='';";
+sudo mysql -u root -p"$mariadb_password" -e "DROP DATABASE IF EXISTS test;DELETE FROM mysql.db WHERE Db='test' OR Db='test\\_%';";
+sudo mysql -u root -p"$mariadb_password" -e "FLUSH PRIVILEGES;";
+sudo bash -c 'cat << EOF >> /etc/mysql/my.cnf
 [mysqld]
 character-set-client-handshake = FALSE
 character-set-server = utf8mb4
@@ -59,31 +102,38 @@ collation-server = utf8mb4_unicode_ci
 
 [mysql]
 default-character-set = utf8mb4
-EOF'
+EOF';
 
- echo $passwrd | sudo -S service mysql restart
- touch "$MARKER_FILE"
+sudo systemctl restart mariadb.service;
+ touch "$MARKER_FILE";
 fi
-read -p "Next, we'll install Node, NPM and Yarn. Please hit Enter..."
-curl https://raw.githubusercontent.com/creationix/nvm/master/install.sh | bash
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
-nvm install 18
-echo $passwrd | sudo -S NEEDRESTART_MODE=a apt-get install npm -y
-echo $passwrd | sudo -S npm install -g yarn
-read -p "well, now we are ready to install frappe. Ready? :-) Hit Enter..."
-echo $passwrd | sudo -S pip3 install frappe-bench
-bench init --frappe-branch version-15 frappe-bench
+sudo apt remove nodejs npm -y
+sudo apt autoremove -y
+sudo apt update
+sudo apt upgrade -y
+sudo apt install -y curl ca-certificates gnupg
+sudo apt install -y libcairo2 libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf-2.0-0 libffi-dev shared-mime-info
+curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
+sudo apt install -y nodejs
+sudo npm install -g yarn
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source ~/.local/bin/env
+uv python install 3.14 --default
+source ~/.bashrc
+.local/share/uv/tools/frappe-bench/bin/python -m ensurepip
+uv tool install frappe-bench
+source ~/.bashrc
+bench init frappe-bench --frappe-branch version-16 --python python3.14
+.local/share/uv/tools/frappe-bench/bin/python -m ensurepip
 chmod -R o+rx .
 cd frappe-bench/
 read -p "Frappe is initialized. Would you like to continue to create a site? (Y/n) " ans
 if [ $ans = "n" ]; then exit 0; fi 
 ans=""
-read -p "Please enter new site name: " newSite
-bench new-site $newSite --db-root-password $sql_passwrd
-bench use $newSite
-echo -e "If you wish to install a custom apps, enter it's URIs.\nStarting with the first:\n"
+export admin_password
+bench new-site "$newSite" --admin-password "$admin_password" --set-default --db-root-username "root" --db-root-password "$mariadb_password"
+
+echo -e "If you wish to install a custom apps, enter it's URIs.\nStarting with the first (Hit Enter for none):\n"
 while read URI; do
  if [ "$URI" = "" ]; then
  break
@@ -103,7 +153,7 @@ read -p "Would you like to continue and install ERPNext? (y/N) " ans
 if [ $ans = "y" ]; then 
   ans=""
   bench get-app payments
-  bench get-app --branch version-15 erpnext
+  bench get-app --branch version-16 erpnext
   bench get-app hrms
   bench install-app erpnext
   bench install-app hrms
@@ -111,44 +161,24 @@ fi
 read -p "Good! Now, is your server ment for production? (Y/n) " ans
 if [ $ans = "n" ]; then exit 0; fi 
 ans=""
-echo $passwrd | sudo -S sed -i -e 's/include:/include_tasks:/g' /usr/local/lib/python3.10/dist-packages/bench/playbooks/roles/mariadb/tasks/main.yml
-yes | sudo bench setup production $USER
-FILE="/etc/supervisor/supervisord.conf"
-SEARCH_PATTERN="chown=$USER:$USER"
-if grep -q "$SEARCH_PATTERN" "$FILE"; then
- echo $passwrd | sudo -S sed -i "/chown=.*/c $SEARCH_PATTERN" "$FILE"
-else
- echo $passwrd | sudo -S sed -i "5a $SEARCH_PATTERN" "$FILE"
+file="/home/$USER/.local/share/uv/tools/frappe-bench/lib/python3.14/site-packages/bench/playbooks/roles/nginx/tasks/vhosts.yml"
+sed -i "s/  when: nginx_vhosts.*/  when: nginx_vhosts | length > 0/g" "$file"
+file="/etc/nginx/nginx.conf"
+sudo cp "$file" "$file.bak.$(date +%F_%H-%M-%S)"
+if ! grep -q "log_format main" "$file"; then
+    sudo awk '
+    /##/ && c==0 {
+        print; 
+        getline; print; getline; print;
+        print "\tlog_format main '\''$remote_addr - $remote_user [$time_local] '\'' '\''\"$request\" $status $body_bytes_sent '\'' '\''\"$http_referer\" \"$http_user_agent\"'\'';";
+        c=1; next
+    }1' "$file" | sudo tee "$file".tmp > /dev/null && sudo mv "$file".tmp "$file"
+    echo "log_format main inserted into $file"
 fi
-echo $passwrd | sudo -S service supervisor restart
-yes | sudo bench setup production $USER
-bench --site $newSite scheduler enable
-bench --site $newSite scheduler resume
-bench setup socketio
-yes | bench setup supervisor
-bench setup redis
-echo $passwrd | sudo -S supervisorctl reload
-cat << EOF
-You can now go to your server [IP-address]:80 and you will have a fresh new installation of ERPNext ready to be configured!
-If you are facing any issues with the ports, make sure to enable all the necessary ports on your firewall using the below commands:
-
-  sudo ufw allow 22,25,143,80,443,3306,3022,8000/tcp
-  sudo ufw enable
-  
-(Hint: you can open a new tty to run these two commands without stopping this script. (-; )
-EOF
-
-read -p "You can now configure SSL with a custom domain. Would you like to do so? (Y/n) " ans
-if [ $ans = "n" ]; then exit 0; fi 
-echo "First, make sure that there is an A record on your domain DNS pointing to the ERPNext server's IP address."
-read -p "Then press enter to continue..."
-bench config dns_multitenant on
-read -p "Please enter your ERPNext server FQDN: " fqdn
-bench setup add-domain $fqdn --site $newSite
-bench setup nginx 
+export PATH=/usr/sbin:/usr/bin:$PATH
+sudo env "PATH=/home/$USER/.local/bin:$PATH" bench setup production $USER
+echo y | bench setup nginx
 sudo service nginx reload
-sudo snap install core
-sudo snap refresh core
-sudo snap install --classic certbot
-sudo ln -s /snap/bin/certbot /usr/bin/certbot
-sudo certbot --nginx
+sudo supervisorctl reload
+sudo env "PATH=/home/$USER/.local/bin:$PATH" bench setup production $USER
+
