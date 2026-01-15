@@ -22,7 +22,7 @@ The process is constructed of a few parts:
 5. Installing Frappe-bench and initializing it.
 6. (Optional) setting up a new site.
 7. (Optional) Installing ERP-Next and additional custom applications.
-8. (Optional) Making your server ready for production (with or with SSL conactivity).
+8. (Optional) Making your server ready for production (currently without SSL conactivity).
 
 This script is based on guide by shashank_shirke on the Frappe Forum:
 https://discuss.frappe.io/t/guide-how-to-install-erpnext-v15-on-linux-ubuntu-step-by-step-instructions/111706
