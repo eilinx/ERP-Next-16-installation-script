@@ -120,7 +120,6 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 source ~/.local/bin/env
 uv python install 3.14 --default
 source ~/.bashrc
-.local/share/uv/tools/frappe-bench/bin/python -m ensurepip
 uv tool install frappe-bench
 source ~/.bashrc
 bench init frappe-bench --frappe-branch version-16 --python python3.14
