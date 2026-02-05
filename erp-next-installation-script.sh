@@ -180,10 +180,11 @@ else
     if [[ $loc == *"."* ]]; then
         IFS='=' read -a array <<< "$loc"
         loc=${array[0]}
+ fi
     sudo locale-gen $loc.UTF-8
     sudo localectl set-locale LANG=$loc.UTF-8
     echo "export LANG=$loc.UTF-8" >> ~/.bashrc
-    source .bashrc
+    source ~/.bashrc
 fi
 
 export PATH=/usr/sbin:/usr/bin:$PATH
