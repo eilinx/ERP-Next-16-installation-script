@@ -79,7 +79,7 @@ prompt_for_mariadb_password
 prompt_for_admin_password
 read -p "Please enter new site name: " newSite
 sudo apt update && sudo apt upgrade -y
-sudo apt install git libmariadb-dev-compat redis-server libmariadb-dev mariadb-server mariadb-client pkg-config xvfb libfontconfig cron curl build-essential gcc certbot python3-certbot-nginx ansible -y
+sudo apt install git libmariadb-dev-compat redis-server libmariadb-dev mariadb-server mariadb-client pkg-config xvfb libfontconfig cron curl build-essential gcc certbot python3-certbot-nginx ansible supervisor -y
 
 
 MARKER_FILE=~/.MariaDB_handled.marker
